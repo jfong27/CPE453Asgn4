@@ -11,7 +11,7 @@
 FORWARD _PROTOTYPE( char * secret_name, (void));
 FORWARD _PROTOTYPE( int secret_open,      (struct driver *d, message *m) );
 FORWARD _PROTOTYPE( int secret_close,     (struct driver *d, message *m) );
-FORWARD _PROTOTYPE( int ioctl, (struct driver *d, message *m));
+FORWARD _PROTOTYPE( int secret_ioctl, (struct driver *d, message *m));
 FORWARD _PROTOTYPE( struct device * secret_prepare, (int device) );
 FORWARD _PROTOTYPE( int secret_transfer,  (int procnr, int opcode,
                                           u64_t position, iovec_t *iov,
@@ -43,6 +43,7 @@ PRIVATE struct driver secret_tab =
     secret_name,
     secret_open,
     secret_close,
+    secret_ioctl,
     nop_ioctl,
     secret_prepare,
     secret_transfer,
@@ -114,8 +115,14 @@ PRIVATE int secret_close(struct driver *d, message *m) {
    return OK;
 }
 
-PRIVATE int ioctl(struct driver *d, message *m) {
+PRIVATE int secret_ioctl(struct driver *d, message *m) {
+   int res;
    uid_t grantee;
+
+   if (m->REQUEST != SSGRANT) {
+      return ENOTTY;
+   }
+
    res = sys_safecopyfrom(m->IO_ENDPT, (vir_bytes)m->IO_GRANT,
                           0, (vir_bytes)&grantee, sizeof(grantee), D);
 
