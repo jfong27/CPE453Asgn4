@@ -28,8 +28,9 @@ FORWARD _PROTOTYPE( int lu_state_restore, (void) );
 #define O_WRONLY 2
 #define O_RDONLY 4
 #define O_RDWR 6
+#define UNOWNED -1 
 
-PRIVATE uid_t secretHolder = -1;
+PRIVATE uid_t secretHolder = UNOWNED;
 PRIVATE vir_bytes currSecretSize = 0;
 PRIVATE char secret[SECRET_SIZE];
 
@@ -98,7 +99,7 @@ PRIVATE int secret_close(struct driver *d, message *m) {
       for (i = 0; i < SECRET_SIZE; i++) {
          secret[i] = '\0';
       }
-      secretHolder = -1;
+      secretHolder = UNOWNED;
    }
    return OK;
 }
