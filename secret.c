@@ -91,11 +91,16 @@ PRIVATE int secret_open(
 	return OK;
 }
 
-PRIVATE int secret_close(d, m)
-    struct driver *d;
-    message *m;
-{
-    return OK;
+PRIVATE int secret_close(struct driver *d, message *m) {
+
+   // No more processes using secret, so clear it out
+   if (open_fds == 0) {
+      for (i = 0; i < SECRET_SIZE; i++) {
+         secret[i] = '\0';
+      }
+      secretHolder = -1;
+   }
+   return OK;
 }
 
 PRIVATE struct device * secret_prepare(dev)
