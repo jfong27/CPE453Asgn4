@@ -8,6 +8,7 @@
 /*
  * Function prototypes for the secret driver.
  */
+FORWARD _PROTOTYPE( char * secret_name, (void));
 FORWARD _PROTOTYPE( int secret_open,      (struct driver *d, message *m) );
 FORWARD _PROTOTYPE( int secret_close,     (struct driver *d, message *m) );
 FORWARD _PROTOTYPE( struct device * secret_prepare, (int device) );
