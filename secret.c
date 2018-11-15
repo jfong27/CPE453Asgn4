@@ -33,10 +33,12 @@ FORWARD _PROTOTYPE( int lu_state_restore, (void) );
 PRIVATE uid_t secretHolder = UNOWNED;
 PRIVATE vir_bytes currSecretSize = 0;
 PRIVATE char secret[SECRET_SIZE];
+PRIVATE int currWritePlace = 0, currReadPlace = 0; 
 
 /* Entry points to the hello driver. */
-PRIVATE struct chardriver secret_tab =
+PRIVATE struct driver secret_tab =
 {
+    secret_name,
     secret_open,
     secret_close,
     nop_ioctl,
@@ -58,15 +60,19 @@ PRIVATE struct device secret_device;
 PRIVATE int open_counter;
 PRIVATE int open_fds;
 
+PRIVATE char * secret_name(void)
+{
+    return "secret";
+}
+
 PRIVATE int secret_open(
-    struct driver *d;
-    message *m) {
+    struct driver *d, message *m) {
 	struct ucred user;
 	if(m->COUNT == O_RDWR) {
 		return EACCES;
 	}
 
-	getnucred(m->USER_ENDPT, &user);
+	getnucred(m->IO_ENDPT, &user);
 	if(secretHolder == UNOWNED) {
 		if(m->COUNT == O_WRONLY) {
 			secretHolder = user.uid;
@@ -94,8 +100,9 @@ PRIVATE int secret_open(
 
 PRIVATE int secret_close(struct driver *d, message *m) {
 
-   // No more processes using secret, so clear it out
-   open_fds--;
+   /* No more processes using secret, so clear it out */
+   int i;
+   open_fds -= 1;
    if (open_fds == 0) {
       for (i = 0; i < SECRET_SIZE; i++) {
          secret[i] = '\0';
@@ -122,29 +129,37 @@ PRIVATE int secret_transfer(proc_nr, opcode, position, iov, nr_req)
     iovec_t *iov;
     unsigned nr_req;
 {
-    int bytes, ret;
-
-    bytes = SECRET_SIZE - position.lo < iov->iov_size ?
-            SECRET_SIZE - position.lo : iov->iov_size;
-
-    if (bytes <= 0)
-    {
-        return OK;
-    }
+    int readBytes, writeBytes, ret;
     switch (opcode)
     {
         case DEV_GATHER_S:
+            readBytes = iov->iov_size;
+            if(readBytes <= 0) {
+                return OK;
+            }
+            if(readBytes > (currWritePlace - currReadPlace) {
+                readBytes = currWritePlace - currReadPlace;
+            }
             ret = sys_safecopyto(proc_nr, iov->iov_addr, 0,
-                                (vir_bytes) (secret + position.lo),
-                                 bytes, D);
-            iov->iov_size -= bytes;
+                                (vir_bytes) (secret + currReadPlace),
+                                 readBytes, D);
+            iov->iov_size -= readBytes;
+            currReadPlace += readBytes;
             break;
 
 	    case DEV_SCATTER_S:
-	        ret = sys_safecopyfrom(proc_nr, iov->iov_addr, 0 
-	    			              (vir_bytes) (secret + position.lo),
-				                    bytes, D);
-	    iov->iov_size += bytes;
+            writeBytes = iov->iov_size;
+            if(writeBytes <= 0) {
+                return OK;
+            }
+            if(writeBytes > SECRET_SIZE-currWritePlace) {
+                writeBytes = SECRET_SIZE-currWritePlace;
+            }
+	        ret = sys_safecopyfrom(proc_nr, iov->iov_addr, 0, 
+                                  (vir_bytes) (secret + currWritePlace),
+				                    writeBytes, D);
+	        iov->iov_size += writeBytes;
+            currWritePlace += writeBytes
         default:
             return EINVAL;
     }
