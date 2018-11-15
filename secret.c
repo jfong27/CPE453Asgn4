@@ -67,7 +67,7 @@ PRIVATE int secret_open(
 	}
 
 	getnucred(m->USER_ENDPT, &user);
-	if(secretHolder == -1) {
+	if(secretHolder == UNOWNED) {
 		if(m->COUNT == O_WRONLY) {
 			secretHolder = user.uid;
 			return OK;
@@ -95,6 +95,7 @@ PRIVATE int secret_open(
 PRIVATE int secret_close(struct driver *d, message *m) {
 
    // No more processes using secret, so clear it out
+   open_fds--;
    if (open_fds == 0) {
       for (i = 0; i < SECRET_SIZE; i++) {
          secret[i] = '\0';
@@ -139,10 +140,10 @@ PRIVATE int secret_transfer(proc_nr, opcode, position, iov, nr_req)
             iov->iov_size -= bytes;
             break;
 
-	case DEV_SCATTER_S:
-	    ret = sys_safecopyfrom(proc_nr, iov->iov_addr, 0 
-	    			(vir_bytes) (secret + position.lo),
-				 bytes, D);
+	    case DEV_SCATTER_S:
+	        ret = sys_safecopyfrom(proc_nr, iov->iov_addr, 0 
+	    			              (vir_bytes) (secret + position.lo),
+				                    bytes, D);
 	    iov->iov_size += bytes;
         default:
             return EINVAL;
