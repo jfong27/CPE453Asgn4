@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <minix/ds.h>
+#include <minix/ioctl.h>
+#include <sys/ioc_secret.h>
 #include "secret.h"
 
 /*
@@ -31,7 +33,7 @@ FORWARD _PROTOTYPE( int lu_state_restore, (void) );
 #define UNOWNED -1 
 
 PRIVATE uid_t secretHolder = UNOWNED;
-PRIVATE char secret[SECRET_SIZE];
+PRIVATE char * secret;
 PRIVATE int currWritePlace = 0, currReadPlace = 0; 
 PRIVATE int lastWasRead = FALSE;
 
@@ -42,7 +44,6 @@ PRIVATE struct driver secret_tab =
     secret_open,
     secret_close,
     secret_ioctl,
-    nop_ioctl,
     secret_prepare,
     secret_transfer,
     nop_cleanup,
@@ -153,10 +154,12 @@ PRIVATE int secret_transfer(proc_nr, opcode, position, iov, nr_req)
     {
         case DEV_GATHER_S:
             readBytes = iov->iov_size;
-            if(readBytes <= 0) {
+            if(readBytes <= 0) 
+            {
                 return OK;
             }
-            if(readBytes > (currWritePlace - currReadPlace) {
+            if(readBytes > (currWritePlace - currReadPlace))
+            {
                 readBytes = currWritePlace - currReadPlace;
             }
             ret = sys_safecopyto(proc_nr, iov->iov_addr, 0,
@@ -178,7 +181,7 @@ PRIVATE int secret_transfer(proc_nr, opcode, position, iov, nr_req)
                                   (vir_bytes) (secret + currWritePlace),
 				                    writeBytes, D);
 	        iov->iov_size += writeBytes;
-            currWritePlace += writeBytes
+            currWritePlace += writeBytes;
         default:
             return EINVAL;
     }
@@ -195,42 +198,50 @@ PRIVATE void secret_geometry(entry)
 
 PRIVATE int sef_cb_lu_state_save(int state) {
 /* Save the state. */
-    ds_publish_u32("secret", secret, sizeof(secret), DSF_OVERWRITE);
-    ds_publish_u32("secretHolder", secretHolder, DSF_OVERWRITE);
-    ds_publish_u32("currWritePlace", currWritePlace, DSF_OVERWRITE);
-    ds_publish_u32("currReadPlace", currReadPlace, DSF_OVERWRITE);
-    ds_publish_u32("open_fds", open_fds, DSF_OVERWRITE);
-    ds_publish_u32("lastWasRead", lastWasRead, DSF_OVERWRITE);
+    ds_publish_mem("secret", secret, SECRET_SIZE, DSF_OVERWRITE);
+    ds_publish_mem("secretHolder", &secretHolder, sizeof(secretHolder), DSF_OVERWRITE);
+    ds_publish_mem("currWritePlace", &currWritePlace, sizeof(currWritePlace), DSF_OVERWRITE);
+    ds_publish_mem("currReadPlace", &currReadPlace, sizeof(currReadPlace), DSF_OVERWRITE);
+    ds_publish_mem("open_fds", &open_fds, sizeof(open_fds), DSF_OVERWRITE);
+    ds_publish_mem("lastWasRead", &lastWasRead, sizeof(lastWasRead), DSF_OVERWRITE);
 
     return OK;
 }
 
 PRIVATE int lu_state_restore() {
 /* Restore the state. */
-    u32_t value;
+    char * value = malloc(SECRET_SIZE);
 
-    ds_retrieve_u32("secret", &value, sizeof(secret));
-    ds_delete_u32("secret");
+    size_t *size = malloc(sizeof(size_t));
+
+    *size = SECRET_SIZE;
+    ds_retrieve_mem("secret", value, size);
+    ds_delete_mem("secret");
     secret = (char *) value;
 
-    ds_retrieve_u32("secretHolder", &value);
-    ds_delete_u32("secretHolder");
-    secretHolder = (int) value;
+    *size = sizeof(secretHolder);
+    ds_retrieve_mem("secretHolder", value, size);
+    ds_delete_mem("secretHolder");
+    secretHolder = (int) *value;
 
-    ds_retrieve_u32("currWritePlace", &value);
-    ds_delete_u32("currWritePlace");
+    *size = sizeof(currWritePlace);    
+    ds_retrieve_mem("currWritePlace", value, size);
+    ds_delete_mem("currWritePlace");
     currWritePlace = (int) value;
 
-    ds_retrieve_u32("currReadPlace", &value);
-    ds_delete_u32("currReadPlace");
+    *size = sizeof(currReadPlace);
+    ds_retrieve_mem("currReadPlace", value, size);
+    ds_delete_mem("currReadPlace");
     currReadPlace = (int) value;
 
-    ds_retrieve_u32("open_fds", &value);
-    ds_delete_u32("open_fds");
+    *size = sizeof(open_fds);
+    ds_retrieve_mem("open_fds", value, size);
+    ds_delete_mem("open_fds");
     open_fds = (int) value;
 
-    ds_retrieve_u32("lastWasRead", &value);
-    ds_delete_u32("lastWasRead");
+    *size = sizeof(lastWasRead);
+    ds_retrieve_mem("lastWasRead", value, size);
+    ds_delete_mem("lastWasRead");
     lastWasRead = (int) value;
 
     return OK;
@@ -264,7 +275,6 @@ PRIVATE int sef_cb_init(int type, sef_init_info_t *info)
 /* Initialize the hello driver. */
     int do_announce_driver = TRUE;
 
-    open_counter = 0;
     switch(type) {
         case SEF_INIT_FRESH:
             printf("%s", secret);
@@ -298,7 +308,7 @@ PUBLIC int main(int argc, char **argv)
      * Perform initialization.
      */
     sef_local_startup();
-
+    secret = malloc(SECRET_SIZE);
     /*
      * Run the main loop.
      */
