@@ -82,9 +82,7 @@ PRIVATE int secret_open(
             open_fds++;
 			secretHolder = user.uid;
 			return OK;
-		} else {
-			return -1;
-		}
+		} 
 	} else {
         if(secretHolder != user.uid)
         {
