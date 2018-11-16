@@ -24,17 +24,15 @@ FORWARD _PROTOTYPE( int sef_cb_lu_state_save, (int) );
 FORWARD _PROTOTYPE( int lu_state_restore, (void) );
 
 #define SECRET_SIZE 8192
-#define TRUE 1
-#define FALSE 0
 #define O_WRONLY 2
 #define O_RDONLY 4
 #define O_RDWR 6
 #define UNOWNED -1 
 
 PRIVATE uid_t secretHolder = UNOWNED;
-PRIVATE vir_bytes currSecretSize = 0;
 PRIVATE char secret[SECRET_SIZE];
 PRIVATE int currWritePlace = 0, currReadPlace = 0; 
+PRIVATE int lastWasRead = FALSE;
 
 /* Entry points to the hello driver. */
 PRIVATE struct driver secret_tab =
@@ -54,11 +52,9 @@ PRIVATE struct driver secret_tab =
     do_nop,
 };
 
-/** Represents the /dev/hello device. */
+/** Represents the /dev/secret device. */
 PRIVATE struct device secret_device;
 
-/** State variable to count the number of times the device has been opened. */
-PRIVATE int open_counter;
 PRIVATE int open_fds;
 
 PRIVATE char * secret_name(void)
@@ -69,33 +65,37 @@ PRIVATE char * secret_name(void)
 PRIVATE int secret_open(
     struct driver *d, message *m) {
 	struct ucred user;
-	if(m->COUNT == O_RDWR) {
+	if((m->COUNT&0x07) == O_RDWR) {
 		return EACCES;
 	}
 
 	getnucred(m->IO_ENDPT, &user);
 	if(secretHolder == UNOWNED) {
-		if(m->COUNT == O_WRONLY) {
+		if((m->COUNT&0x07) == O_WRONLY) {
+            open_fds++;
 			secretHolder = user.uid;
 			return OK;
-		}else if(m->COUNT == O_RDONLY) {
+		} else if((m->COUNT&0x07) == O_RDONLY) {
+            lastWasRead = TRUE;
+            open_fds++;
 			secretHolder = user.uid;	
-			open_fds++;
 			return OK;
 		} else {
 			return -1;
 		}
 	} else {
-		if(m->COUNT == O_RDONLY) {
+		if((m->COUNT&0x07) == O_RDONLY) {
 			if(secretHolder == user.uid) {
+                open_fds++;
 				return OK;	
 			} else {
 				return EACCES;
 			}
-		} else if(m->COUNT == O_WRONLY){
+		} else if((m->COUNT&0x07) == O_WRONLY){
 			return ENOSPC;	
 		}
 	}
+    open_fds++;
 	return OK;
 }
 
@@ -104,7 +104,7 @@ PRIVATE int secret_close(struct driver *d, message *m) {
    /* No more processes using secret, so clear it out */
    int i;
    open_fds -= 1;
-   if (open_fds == 0) {
+   if (lastWasRead && open_fds == 0) {
       for (i = 0; i < SECRET_SIZE; i++) {
          secret[i] = '\0';
       }
@@ -177,7 +177,12 @@ PRIVATE void secret_geometry(entry)
 
 PRIVATE int sef_cb_lu_state_save(int state) {
 /* Save the state. */
-    ds_publish_u32("open_counter", open_counter, DSF_OVERWRITE);
+    ds_publish_u32("secret", secret, sizeof(secret), DSF_OVERWRITE);
+    ds_publish_u32("secretHolder", secretHolder, DSF_OVERWRITE);
+    ds_publish_u32("currWritePlace", currWritePlace, DSF_OVERWRITE);
+    ds_publish_u32("currReadPlace", currReadPlace, DSF_OVERWRITE);
+    ds_publish_u32("open_fds", open_fds, DSF_OVERWRITE);
+    ds_publish_u32("lastWasRead", lastWasRead, DSF_OVERWRITE);
 
     return OK;
 }
@@ -186,9 +191,29 @@ PRIVATE int lu_state_restore() {
 /* Restore the state. */
     u32_t value;
 
-    ds_retrieve_u32("open_counter", &value);
-    ds_delete_u32("open_counter");
-    open_counter = (int) value;
+    ds_retrieve_u32("secret", &value, sizeof(secret));
+    ds_delete_u32("secret");
+    secret = (char *) value;
+
+    ds_retrieve_u32("secretHolder", &value);
+    ds_delete_u32("secretHolder");
+    secretHolder = (int) value;
+
+    ds_retrieve_u32("currWritePlace", &value);
+    ds_delete_u32("currWritePlace");
+    currWritePlace = (int) value;
+
+    ds_retrieve_u32("currReadPlace", &value);
+    ds_delete_u32("currReadPlace");
+    currReadPlace = (int) value;
+
+    ds_retrieve_u32("open_fds", &value);
+    ds_delete_u32("open_fds");
+    open_fds = (int) value;
+
+    ds_retrieve_u32("lastWasRead", &value);
+    ds_delete_u32("lastWasRead");
+    lastWasRead = (int) value;
 
     return OK;
 }
