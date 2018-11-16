@@ -76,34 +76,27 @@ PRIVATE int secret_open(
     printf("%d\n", secretHolder);
 	if(secretHolder == UNOWNED) {
 		if((m->COUNT&0x07) == O_WRONLY) {
-            printf("HERE1\n");
             open_fds++;
 			secretHolder = user.uid;
-            printf("New Owner: %d\n", secretHolder);
 			return OK;
 		} else if((m->COUNT&0x07) == O_RDONLY) {
-            printf("HERE2\n");
             lastWasRead = TRUE;
             open_fds++;
 			secretHolder = user.uid;
-            printf("New Owner: %d\n", secretHolder);	
 			return OK;
 		} else {
-            printf("HERE3\n");
 			return -1;
 		}
 	} else {
+        if(secretHolder != user.uid)
+        {
+            return EACCES;
+        }
 		if((m->COUNT&0x07) == O_RDONLY) {
-			if(secretHolder == user.uid) {
-                printf("HERE4\n");
-                open_fds++;
-				return OK;	
-			} else {
-                printf("HERE5\n");
-				return EACCES;
-			}
+            lastWasRead = TRUE;
+            open_fds++;
+			return OK;	
 		} else if((m->COUNT&0x07) == O_WRONLY){
-            printf("HERE6\n");
 			return ENOSPC;	
 		}
 	}
