@@ -5,7 +5,6 @@
 #include <minix/ds.h>
 #include <minix/ioctl.h>
 #include <sys/ioc_secret.h>
-#include "secret.h"
 
 /*
  * Function prototypes for the secret driver.
@@ -73,7 +72,6 @@ PRIVATE int secret_open(
 	}
 
 	getnucred(m->IO_ENDPT, &user);
-    printf("%d\n", secretHolder);
 	if(secretHolder == UNOWNED) {
 		if((m->COUNT&0x07) == O_WRONLY) {
             open_fds++;
