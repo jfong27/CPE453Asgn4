@@ -33,7 +33,7 @@ FORWARD _PROTOTYPE( int lu_state_restore, (void) );
 #define UNOWNED -1 
 
 PRIVATE uid_t secretHolder = UNOWNED;
-PRIVATE char * secret;
+PRIVATE char secret[SECRET_SIZE];
 PRIVATE int currWritePlace = 0, currReadPlace = 0; 
 PRIVATE int lastWasRead = FALSE;
 
@@ -73,28 +73,37 @@ PRIVATE int secret_open(
 	}
 
 	getnucred(m->IO_ENDPT, &user);
+    printf("%d\n", secretHolder);
 	if(secretHolder == UNOWNED) {
 		if((m->COUNT&0x07) == O_WRONLY) {
+            printf("HERE1\n");
             open_fds++;
 			secretHolder = user.uid;
+            printf("New Owner: %d\n", secretHolder);
 			return OK;
 		} else if((m->COUNT&0x07) == O_RDONLY) {
+            printf("HERE2\n");
             lastWasRead = TRUE;
             open_fds++;
-			secretHolder = user.uid;	
+			secretHolder = user.uid;
+            printf("New Owner: %d\n", secretHolder);	
 			return OK;
 		} else {
+            printf("HERE3\n");
 			return -1;
 		}
 	} else {
 		if((m->COUNT&0x07) == O_RDONLY) {
 			if(secretHolder == user.uid) {
+                printf("HERE4\n");
                 open_fds++;
 				return OK;	
 			} else {
+                printf("HERE5\n");
 				return EACCES;
 			}
 		} else if((m->COUNT&0x07) == O_WRONLY){
+            printf("HERE6\n");
 			return ENOSPC;	
 		}
 	}
@@ -112,6 +121,7 @@ PRIVATE int secret_close(struct driver *d, message *m) {
          secret[i] = '\0';
       }
       secretHolder = UNOWNED;
+      lastWasRead = FALSE;
    }
    return OK;
 }
@@ -154,13 +164,13 @@ PRIVATE int secret_transfer(proc_nr, opcode, position, iov, nr_req)
     {
         case DEV_GATHER_S:
             readBytes = iov->iov_size;
-            if(readBytes <= 0) 
-            {
-                return OK;
-            }
             if(readBytes > (currWritePlace - currReadPlace))
             {
                 readBytes = currWritePlace - currReadPlace;
+            }
+            if(readBytes <= 0) 
+            {
+                return OK;
             }
             ret = sys_safecopyto(proc_nr, iov->iov_addr, 0,
                                 (vir_bytes) (secret + currReadPlace),
@@ -171,11 +181,11 @@ PRIVATE int secret_transfer(proc_nr, opcode, position, iov, nr_req)
 
 	    case DEV_SCATTER_S:
             writeBytes = iov->iov_size;
-            if(writeBytes <= 0) {
-                return OK;
-            }
             if(writeBytes > SECRET_SIZE-currWritePlace) {
                 writeBytes = SECRET_SIZE-currWritePlace;
+            }
+            if(writeBytes <= 0) {
+                return OK;
             }
 	        ret = sys_safecopyfrom(proc_nr, iov->iov_addr, 0, 
                                   (vir_bytes) (secret + currWritePlace),
@@ -210,14 +220,14 @@ PRIVATE int sef_cb_lu_state_save(int state) {
 
 PRIVATE int lu_state_restore() {
 /* Restore the state. */
-    char * value = malloc(SECRET_SIZE);
+    char * value;
 
-    size_t *size = malloc(sizeof(size_t));
+    size_t *size;
 
     *size = SECRET_SIZE;
     ds_retrieve_mem("secret", value, size);
     ds_delete_mem("secret");
-    secret = (char *) value;
+    strcpy(secret, value);
 
     *size = sizeof(secretHolder);
     ds_retrieve_mem("secretHolder", value, size);
@@ -308,7 +318,6 @@ PUBLIC int main(int argc, char **argv)
      * Perform initialization.
      */
     sef_local_startup();
-    secret = malloc(SECRET_SIZE);
     /*
      * Run the main loop.
      */
